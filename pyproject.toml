@@ -1,0 +1,11 @@
+[project]
+name = "Sukoban"
+version = "0.1.0"
+description = "A simple Sokoban game"
+authors = [{name = "Hung Lex", email = "lexuanhung25062001@google.com"}]
+requires-python = ">= 3.11"
+dependencies = [
+    "rich>=14.2.0",
+    "ruff>=0.14.0",
+    "textual>=6.3.0",
+]
