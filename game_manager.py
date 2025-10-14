@@ -1,16 +1,23 @@
 from typing import List, Optional, Dict, Tuple
-from base.Base import Entity, Position, EntityType
+from base import Entity, Position, EntityType
 from Entities.wall import Wall
 from Entities.floor import Floor
 from Entities.dock import Dock
 from Entities.box import Box
 from Entities.character import Player
 
+from log.logger import get_logger, catch_and_log, log_function_call, log_game_event, log_performance
+
+# Get logger for this module
+log = get_logger(__name__)
+
 
 class GameMap:
     """Manages the game map and entities"""
     
+    @log_function_call("INFO")
     def __init__(self, level_data: List[str]):
+        log.info(f"🗺️  Initializing game map with {len(level_data)} rows")
         self.width = max(len(line) for line in level_data) if level_data else 0
         self.height = len(level_data)
         self.original_level_data = level_data.copy()
@@ -23,6 +30,7 @@ class GameMap:
         
         # Initialize map from level data
         self._parse_level_data(level_data)
+        log_game_event(log, f"Game map initialized: {self.width}x{self.height}, entities: {len(self.entities)}")
     
     def _parse_level_data(self, level_data: List[str]):
         """Parse level data and create entities"""
@@ -121,9 +129,14 @@ class GameMap:
                 return False
         return True
     
+    @log_performance
+    @catch_and_log(level="WARNING", message="Player movement failed")
     def move_player(self, direction: str) -> bool:
         """Move player in the given direction"""
+        log.debug(f"🎮 Attempting to move player {direction}")
+        
         if not self.player:
+            log.error("❌ No player found to move")
             return False
         
         # Calculate movement offset
@@ -135,6 +148,7 @@ class GameMap:
         }
         
         if direction not in offsets:
+            log.warning(f"⚠️ Invalid movement direction: {direction}")
             return False
         
         dx, dy = offsets[direction]
