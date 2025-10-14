@@ -1,5 +1,0 @@
-2025-10-13 18:00:32.082 | ERROR    | log.logger:wrapper:259 | 💥 Level generation failed: TypeError: unhashable type: 'Node' | Exception: 
-2025-10-13 18:00:32.087 | ERROR    | log.logger:wrapper:259 | 💥 Level generation failed: TypeError: unhashable type: 'Node' | Exception: 
-2025-10-13 18:17:36.806 | ERROR    | log.logger:wrapper:259 | 💥 Level generation failed: TypeError: unhashable type: 'Node' | Exception: 
-2025-10-13 18:17:36.812 | ERROR    | log.logger:wrapper:259 | 💥 Level generation failed: TypeError: unhashable type: 'Node' | Exception: 
-2025-10-13 18:27:33.285 | ERROR    | log.logger:wrapper:182 | 💥 generate_sokoban_level failed after 0.00ms: generate_sokoban_level() got an unexpected keyword argument 'optimize' | Exception: 
