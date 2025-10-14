@@ -1,10 +1,6 @@
 from typing import List, Optional, Dict, Tuple
 from base import Entity, Position, EntityType
-from Entities.wall import Wall
-from Entities.floor import Floor
-from Entities.dock import Dock
-from Entities.box import Box
-from Entities.character import Player
+from entities import Wall, Floor, Player, Box, Dock
 
 from log.logger import get_logger, catch_and_log, log_function_call, log_game_event, log_performance
 
