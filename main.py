@@ -3,7 +3,18 @@ from textual.widgets import Header, Footer, Static
 from textual.containers import Container
 from rich.text import Text
 from game_manager import GameMap
-from base.Base import Position
+from base import Position
+from log import get_logger
+from random import randint
+from pathlib import Path
+
+LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+for file in LOG_DIR.glob("*.log"):
+    file.unlink()
+    
+# Get logger for this module
+log = get_logger(__name__)
 
 
 class GameMapWidget(Static):
@@ -11,7 +22,9 @@ class GameMapWidget(Static):
     
     def __init__(self, level_data: list[str]):
         super().__init__()
+        log.info(f"Initializing GameMapWidget with level size {len(level_data)}x{len(level_data[0]) if level_data else 0}")
         self.game_map = GameMap(level_data)
+        log.info("GameMapWidget initialization complete")
         
     def render(self) -> Text:
         """Render the game map with entities"""
@@ -29,11 +42,20 @@ class GameMapWidget(Static):
     
     def move_player(self, direction: str) -> bool:
         """Move player in the given direction"""
-        return self.game_map.move_player(direction)
+        log.debug(f"Moving player in direction: {direction}")
+        success = self.game_map.move_player(direction)
+        if success:
+            log.info(f"Player moved {direction} successfully")
+        else:
+            log.warning(f"Player could not move {direction}")
+        return success
     
     def is_level_complete(self) -> bool:
         """Check if all boxes are on docks"""
-        return self.game_map.is_level_complete()
+        complete = self.game_map.is_level_complete()
+        if complete:
+            log.success("🎉 Level completed! All boxes are on docks!")
+        return complete
     
     def reset_level(self):
         """Reset the level to its original state"""
@@ -79,7 +101,8 @@ class PauseMenu(Static):
             "\n[bold white on blue]        PAUSED        [/bold white on blue]\n"
             "[bold white on blue]                      [/bold white on blue]\n"
             "[bold white on blue]  R - Resume Game     [/bold white on blue]\n"
-            "[bold white on blue]  N - Reset Level     [/bold white on blue]\n"
+            "[bold white on blue]  N - New Level       [/bold white on blue]\n"
+            "[bold white on blue]  R - Reset Level     [/bold white on blue]\n"
             "[bold white on blue]  Q - Quit Game       [/bold white on blue]\n"
             "[bold white on blue]                      [/bold white on blue]\n"
         )
@@ -129,57 +152,52 @@ class SukobanApp(App):
         ("d,right", "move_right", "Move right"),
         ("p,space", "pause", "Pause"),
         ("r", "reset", "Reset level"),
+        ("n", "new_level", "Generate new level"),
         ("q", "quit", "Quit"),
     ]
     
     def __init__(self):
         super().__init__()
-        self.level_data = self.load_level_1()
+        log.info("🎮 Starting Sokoban game application...")
+        self.level_data = self.load_level()
         self.game_map_widget = GameMapWidget(self.level_data)
         self.score_bar = ScoreBar(self.game_map_widget)
         self.pause_menu = PauseMenu()
         self.paused = False
+        log.success("✅ Sokoban application initialized successfully!")
         
-    def load_level_1(self) -> list[str]:
-        """Load level 1 from the levels.txt file or use a default"""
+    def load_level(self) -> list[str]:
+        """Generate a new level using the procedural level generator"""
+        log.info("🎲 Generating new level with procedural generator...")
         try:
-            with open("levels.txt", "r") as f:
-                content = f.read()
-                lines = content.split('\n')
+            from levels.level import generate_sokoban_level
+            
+            # Generate a new level with reasonable parameters  
+            level_data = generate_sokoban_level(10, 10, 3)
+            
+            if level_data and len(level_data) > 0:
+                log.success(f"✅ Level generated successfully ({len(level_data)} lines)")
+                return level_data
+            else:
+                log.warning("⚠️ Level generation failed, using fallback level")
+                return self.get_default_level()
                 
-                # Find Level 1
-                level_start = -1
-                for i, line in enumerate(lines):
-                    if line.strip() == "Level 1":
-                        level_start = i + 1
-                        break
-                
-                if level_start == -1:
-                    return self.get_default_level()
-                
-                # Extract level data until empty line or next level
-                level_lines = []
-                for i in range(level_start, len(lines)):
-                    line = lines[i]
-                    if line.strip() == "" or line.startswith("Level "):
-                        break
-                    level_lines.append(line.rstrip())
-                
-                return level_lines if level_lines else self.get_default_level()
-                
-        except FileNotFoundError:
+        except Exception as e:
+            log.error(f"❌ Level generation error: {e}")
+            log.info("🔄 Falling back to default level")
             return self.get_default_level()
     
     def get_default_level(self) -> list[str]:
         """Return a default level if file is not found"""
+        log.info("🎮 Loading default level...")
         return [
             "####",
             "#  ###",
             "#    #",
             "# $  #",
             "### ###",
-            "# $ $ #",
-            "#..@..#",
+            "#   $ #",
+            "#. @..#",
             "#  $  #",
             "###  ##",
             "  ####"
@@ -221,12 +239,51 @@ class SukobanApp(App):
         self.game_map_widget.reset_level()
         self.refresh_widgets()
     
+    def action_new_level(self):
+        """Generate and load a new level"""
+        try:
+            log.info("🎲 Generating new level...")
+            from levels.level import generate_sokoban_level
+            
+            # Generate a new level
+            size = randint(8, 12)
+            boxes = randint(2, min(5, size // 2))
+            new_level_data = generate_sokoban_level(size, size, boxes)
+            
+            # Get the container
+            container = self.query_one(".game-container")
+            
+            # Remove the old widget if it exists and is mounted
+            old_widget = self.game_map_widget
+            if old_widget and old_widget.is_mounted:
+                old_widget.remove()
+            
+            # Create new game map widget
+            self.game_map_widget = GameMapWidget(new_level_data)
+            self.score_bar.game_map_widget = self.game_map_widget
+            
+            # Mount the new widget in the container
+            container.mount(self.game_map_widget)
+            
+            # Refresh the display
+            self.refresh()
+            self.notify("🎮 New level generated!", severity="information")
+            log.success("✅ New level successfully generated and displayed")
+            
+        except Exception as e:
+            log.error(f"❌ Level generation failed: {e}")
+            self.notify(f"❌ Failed to generate level: {e}", severity="error")
+    
     def move_player(self, direction: str):
         """Handle player movement and game state updates"""
         if self.game_map_widget.move_player(direction):
             self.refresh_widgets()
+            moves = self.game_map_widget.get_moves()
+            pushes = self.game_map_widget.get_pushes()
+            log.debug(f"Game state updated - Moves: {moves}, Pushes: {pushes}")
             
             if self.game_map_widget.is_level_complete():
+                log.success(f"🎉 Level completed in {moves} moves and {pushes} pushes!")
                 self.notify("🎉 Level Complete! Congratulations!", severity="information")
     
     def refresh_widgets(self):

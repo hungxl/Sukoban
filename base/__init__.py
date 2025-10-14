@@ -9,6 +9,6 @@ Contains the core abstract classes and data structures:
 - EntityType: Enum for different entity types
 """
 
-from .Base import Entity, MovableEntity, StaticEntity, Position, EntityType
+from .base import Entity, MovableEntity, StaticEntity, Position, EntityType
 
 __all__ = ['Entity', 'MovableEntity', 'StaticEntity', 'Position', 'EntityType']
