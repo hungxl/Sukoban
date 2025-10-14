@@ -10,13 +10,13 @@ class Dock(StaticEntity):
         self.has_player = False
     
     def render(self) -> str:
-        """Render dock with glowing target indicator"""
+        """Render dock with glowing target indicator - 2x2 block"""
         if self.has_box:
             # Dock with box - success state with pulsing effect
-            return "[bold white on bright_green blink]◉[/bold white on bright_green blink]"
+            return "[bold white on bright_green blink]◉◉[/bold white on bright_green blink]"
         else:
             # Empty dock - glowing target
-            return "[bold bright_green on green]○[/bold bright_green on green]"
+            return "[bold bright_green on green]○○[/bold bright_green on green]"
     
     def is_solid(self) -> bool:
         return False

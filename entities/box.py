@@ -15,13 +15,13 @@ class Box(MovableEntity):
         self.on_dock = False
     
     def render(self) -> str:
-        """Render box with enhanced 3D visual effects"""
+        """Render box with enhanced 3D visual effects - 2x2 block"""
         if self.on_dock:
             # Box correctly placed - success indicator
-            return "[bold white on bright_green]◉[/bold white on bright_green]"
+            return "[bold white on bright_green]◉◉[/bold white on bright_green]"
         else:
             # Box not in place - wooden crate appearance
-            return "[bold orange_red1]▓[/bold orange_red1]"
+            return "[bold orange_red1]▓▓[/bold orange_red1]"
     
     def is_solid(self) -> bool:
         return True

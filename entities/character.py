@@ -17,13 +17,13 @@ class Player(MovableEntity):
         self.pushes = 0
     
     def render(self) -> str:
-        """Render player with enhanced visual effects"""
+        """Render player with enhanced visual effects - 2x2 block"""
         if self.on_dock:
             # Player on dock - glowing effect with green background
-            return "[bold bright_yellow on green]@[/bold bright_yellow on green]"
+            return "[bold bright_yellow on green]@@[/bold bright_yellow on green]"
         else:
             # Player on floor - bright golden color
-            return "[bold gold1]@[/bold gold1]"
+            return "[bold gold1]@@[/bold gold1]"
     
     def is_solid(self) -> bool:
         return True
