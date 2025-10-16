@@ -8,7 +8,7 @@ import random
 from enum import Enum
 
 # Add logging
-from log.logger import get_logger, log_function_call, log_performance
+from ..log.logger import get_logger, log_function_call, log_performance
 
 # Get logger for this module
 log = get_logger(__name__)

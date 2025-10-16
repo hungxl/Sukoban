@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Tuple
 from enum import Enum
 
-from log.logger import get_logger
+from ..log.logger import get_logger
 
 # Get logger for this module
 log = get_logger(__name__)
@@ -34,7 +34,6 @@ class Position:
     def __add__(self, other) -> 'Position':
         if isinstance(other, Position):
             return Position(self.x + other.x, self.y + other.y)
-        return NotImplemented
         return NotImplemented
     
     def __repr__(self) -> str:

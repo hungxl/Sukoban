@@ -49,7 +49,7 @@ logger.add(
     rotation="10 MB",
     retention="7 days",
     compression="zip",
-    enqueue=True,
+    enqueue=False,  # Keep False to prevent Windows file locking issues
     backtrace=True,
     diagnose=True,
     serialize=False
@@ -68,7 +68,7 @@ logger.add(
     rotation="5 MB",
     retention="30 days",
     compression="zip",
-    enqueue=True,
+    enqueue=False,  # Keep False to prevent Windows file locking issues
     filter=lambda record: record["level"].name in ["INFO", "WARNING", "ERROR", "CRITICAL"]
 )
 
@@ -86,7 +86,7 @@ logger.add(
     rotation="1 MB",
     retention="90 days",
     compression="zip",
-    enqueue=True,
+    enqueue=False,  # Keep False to prevent Windows file locking issues
     backtrace=True,
     diagnose=True
 )

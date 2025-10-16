@@ -1,8 +1,7 @@
 from typing import List, Optional, Dict, Tuple
-from base import Entity, Position, EntityType
-from entities import Wall, Floor, Player, Box, Dock
-
-from log.logger import get_logger, catch_and_log, log_function_call, log_game_event, log_performance
+from .base import Entity, Position, EntityType
+from .entities import Wall, Floor, Player, Box, Dock
+from .log.logger import get_logger, catch_and_log, log_function_call, log_game_event, log_performance
 
 # Get logger for this module
 log = get_logger(__name__)
@@ -128,7 +127,7 @@ class GameMap:
     @log_performance
     @catch_and_log(level="WARNING", message="Player movement failed")
     def move_player(self, direction: str) -> bool:
-        """Move player in the given direction"""
+        """Move player in the given direction (human player - no deadlock detection)"""
         log.debug(f"🎮 Attempting to move player {direction}")
         
         if not self.player:
@@ -169,7 +168,7 @@ class GameMap:
                 break
         
         if box_at_target:
-            # Try to push the box
+            # Try to push the box (no deadlock detection for human player)
             box_new_position = Position(new_position.x + dx, new_position.y + dy)
             if not self._can_push_box(box_at_target, box_new_position):
                 return False
@@ -182,8 +181,65 @@ class GameMap:
         self._move_player_to(new_position)
         return True
     
+    @log_performance
+    @catch_and_log(level="WARNING", message="Bot movement failed")
+    def move_player_bot(self, direction: str) -> bool:
+        """Move player in the given direction (bot algorithms - with deadlock detection)"""
+        log.debug(f"🤖 Bot attempting to move player {direction}")
+        
+        if not self.player:
+            log.error("❌ No player found to move")
+            return False
+        
+        # Calculate movement offset
+        offsets = {
+            'up': (0, -1),
+            'down': (0, 1),
+            'left': (-1, 0),
+            'right': (1, 0)
+        }
+        
+        if direction not in offsets:
+            log.warning(f"⚠️ Invalid movement direction: {direction}")
+            return False
+        
+        dx, dy = offsets[direction]
+        new_position = Position(self.player.x + dx, self.player.y + dy)
+        
+        if not self.is_position_valid(new_position):
+            return False
+        
+        # Check what's at the target position
+        target_entities = self.get_entities_at(new_position)
+        
+        # Check for walls
+        for entity in target_entities:
+            if entity.entity_type == EntityType.WALL:
+                return False
+        
+        # Check for boxes
+        box_at_target = None
+        for entity in target_entities:
+            if isinstance(entity, Box):
+                box_at_target = entity
+                break
+        
+        if box_at_target:
+            # Try to push the box (WITH deadlock detection for bot)
+            box_new_position = Position(new_position.x + dx, new_position.y + dy)
+            if not self._can_push_box_with_deadlock_detection(box_at_target, box_new_position):
+                return False
+            
+            # Move the box
+            self._move_box(box_at_target, box_new_position)
+            self.player.push_box()
+        
+        # Move the player
+        self._move_player_to(new_position)
+        return True
+    
     def _can_push_box(self, box: Box, new_position: Position) -> bool:
-        """Check if box can be pushed to the new position"""
+        """Check if box can be pushed to the new position (no deadlock detection for human player)"""
         if not self.is_position_valid(new_position):
             return False
         
@@ -191,6 +247,65 @@ class GameMap:
         entities = self.get_entities_at(new_position)
         for entity in entities:
             if entity.is_solid():
+                return False
+        
+        return True
+    
+    def _can_push_box_with_deadlock_detection(self, box: Box, new_position: Position) -> bool:
+        """Check if box can be pushed to the new position with deadlock detection (for bot algorithms)"""
+        if not self.is_position_valid(new_position):
+            return False
+        
+        # Check for solid entities at target position
+        entities = self.get_entities_at(new_position)
+        for entity in entities:
+            if entity.is_solid():
+                return False
+        
+        # CRITICAL: Add deadlock detection for bot algorithms only
+        # Check if box would be stuck in corner (deadlock prevention)
+        dock_at_new_pos = self.get_entity_of_type_at(new_position, EntityType.DOCK)
+        if not dock_at_new_pos:  # Only check deadlock if not on goal
+            wall_count_horizontal = 0
+            wall_count_vertical = 0
+            
+            # Check horizontal neighbors (left and right)
+            left_pos = Position(new_position.x - 1, new_position.y)
+            right_pos = Position(new_position.x + 1, new_position.y)
+            box_count_horizontal = 0
+            if self.get_entity_of_type_at(left_pos, EntityType.WALL):
+                wall_count_horizontal += 1
+            elif self.get_entity_of_type_at(left_pos, EntityType.BOX):
+                box_count_horizontal += 1
+            if self.get_entity_of_type_at(right_pos, EntityType.WALL):
+                wall_count_horizontal += 1
+            elif self.get_entity_of_type_at(right_pos, EntityType.BOX):
+                box_count_horizontal += 1
+                
+            # Check vertical neighbors (up and down)
+            up_pos = Position(new_position.x, new_position.y - 1)
+            down_pos = Position(new_position.x, new_position.y + 1)
+            box_count_vertical = 0
+            if self.get_entity_of_type_at(up_pos, EntityType.WALL):
+                wall_count_vertical += 1
+            elif self.get_entity_of_type_at(up_pos, EntityType.BOX):
+                box_count_vertical += 1
+            if self.get_entity_of_type_at(down_pos, EntityType.WALL):
+                wall_count_vertical += 1
+            elif self.get_entity_of_type_at(down_pos, EntityType.BOX):
+                box_count_vertical += 1
+            
+            # Enhanced deadlock detection (based on your algorithm):
+            # 1. Corner deadlock: walls on two perpendicular sides
+            if wall_count_horizontal >= 1 and wall_count_vertical >= 1:
+                log.debug(f"🚫 Corner deadlock detected: box at {new_position}")
+                return False
+            
+            # 2. Box-wall mixed deadlock: obstacles on perpendicular sides
+            total_horizontal = wall_count_horizontal + box_count_horizontal
+            total_vertical = wall_count_vertical + box_count_vertical
+            if total_horizontal >= 1 and total_vertical >= 1:
+                log.debug(f"🚫 Mixed deadlock detected: box at {new_position}")
                 return False
         
         return True

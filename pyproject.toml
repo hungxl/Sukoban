@@ -2,10 +2,12 @@
 name = "Sukoban"
 version = "0.1.0"
 description = "A simple Sokoban game"
-authors = [{name = "Hung Lex", email = "lexuanhung25062001@google.com"}]
+authors = [{name = "Hung Lex", email = "lexuanhung25062001@google.com"},
+           {name = "Quách Trọng Kiên", email = "qk@example.com"}]
 requires-python = ">= 3.11"
 dependencies = [
     "loguru>=0.7.3",
+    "numpy>=2.3.4",
     "rich>=14.2.0",
     "ruff>=0.14.0",
     "textual>=6.3.0",

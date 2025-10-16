@@ -1,5 +1,5 @@
-from base import MovableEntity, Position, EntityType
-from log.logger import get_logger, catch_and_log, log_function_call, log_player_action
+from ..base import MovableEntity, Position, EntityType
+from ..log.logger import get_logger, catch_and_log, log_function_call, log_player_action
 
 # Get logger for this module
 log = get_logger(__name__)

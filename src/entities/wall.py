@@ -1,4 +1,4 @@
-from base import StaticEntity, Position, EntityType
+from ..base import StaticEntity, Position, EntityType
 
 
 class Wall(StaticEntity):
