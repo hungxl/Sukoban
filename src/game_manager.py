@@ -175,17 +175,16 @@ class GameMap:
             
             # Move the box
             self._move_box(box_at_target, box_new_position)
-            self.player.push_box()
+            self.player.push_box(log_action=True)  # Log for human player
         
-        # Move the player
-        self._move_player_to(new_position)
+        # Move the player (with logging for human player)
+        self._move_player_to(new_position, log_action=True)
         return True
     
-    @log_performance
     @catch_and_log(level="WARNING", message="Bot movement failed")
     def move_player_bot(self, direction: str) -> bool:
         """Move player in the given direction (bot algorithms - with deadlock detection)"""
-        log.debug(f"🤖 Bot attempting to move player {direction}")
+        # Removed excessive debug logging for bot moves to reduce log volume
         
         if not self.player:
             log.error("❌ No player found to move")
@@ -232,10 +231,10 @@ class GameMap:
             
             # Move the box
             self._move_box(box_at_target, box_new_position)
-            self.player.push_box()
+            self.player.push_box(log_action=False)  # No logging for bot
         
-        # Move the player
-        self._move_player_to(new_position)
+        # Move the player (no logging for bot to reduce log volume)
+        self._move_player_to(new_position, log_action=False)
         return True
     
     def _can_push_box(self, box: Box, new_position: Position) -> bool:
@@ -333,7 +332,7 @@ class GameMap:
             new_dock.place_box()
             box.set_on_dock(True)
     
-    def _move_player_to(self, new_position: Position):
+    def _move_player_to(self, new_position: Position, log_action: bool = True):
         """Move player to new position and update dock states"""
         if not self.player:
             return
@@ -349,8 +348,8 @@ class GameMap:
             old_dock.remove_player()
             self.player.set_on_dock(False)
         
-        # Move player
-        self.player.move(new_position)
+        # Move player (with logging control)
+        self.player.move(new_position, log_action=log_action)
         self._add_entity(self.player)
         
         # Update dock state at new position

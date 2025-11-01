@@ -29,19 +29,25 @@ class Player(MovableEntity):
         return True
     
     @catch_and_log(level="WARNING", message="Failed to move player")
-    def move(self, new_position: Position):
+    def move(self, new_position: Position, log_action: bool = True):
         """Move player to new position and increment move counter"""
         old_pos = self.position
         self.set_position(new_position)
         self.moves += 1
-        log_player_action(f"moved from {old_pos} to {new_position}", success=True, 
-                         moves=self.moves, pushes=self.pushes)
+        
+        # Only log if explicitly requested (to avoid spam during bot solving)
+        if log_action:
+            log_player_action(f"moved from {old_pos} to {new_position}", success=True, 
+                             moves=self.moves, pushes=self.pushes)
     
-    @log_function_call("INFO")
-    def push_box(self):
+    @log_function_call("DEBUG")  # Changed to DEBUG to reduce log volume
+    def push_box(self, log_action: bool = True):
         """Increment push counter when player pushes a box"""
         self.pushes += 1
-        log_player_action(f"pushed box (total pushes: {self.pushes})", success=True)
+        
+        # Only log if explicitly requested (to avoid spam during bot solving)
+        if log_action:
+            log_player_action(f"pushed box (total pushes: {self.pushes})", success=True)
     
     @catch_and_log(level="WARNING", message="Failed to set dock status")
     def set_on_dock(self, on_dock: bool):

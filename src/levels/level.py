@@ -182,7 +182,7 @@ _level_collection = LevelCollection()
 def load_level_collection(file_path: Optional[str] = None) -> bool:
     """Load the global level collection from file"""
     if file_path is None:
-        # Default to the AC_Easy.slc file
+        # Default to the AKK_Informatika.slc file
         file_path = str(Path(__file__).parent.parent.parent / "assets" / "levels" / "AKK_Informatika.slc")
         
     return _level_collection.load_from_slc(file_path)
