@@ -58,6 +58,7 @@ class AStarSearch:
         self.solution_found = False
         self.dock_positions = self.get_dock_positions(initial_game_map)
         self.start_time = None
+        self.iterations_used = 0  # Track actual iterations used
         
     def is_time_exceeded(self) -> bool:
         """Check if time limit has been exceeded"""
@@ -263,6 +264,10 @@ class AStarSearch:
             
             # Use move_player_bot for deadlock detection in algorithms
             if test_map.move_player_bot(direction):
+                # Check for global deadlock: all boxes stuck
+                if test_map._is_all_boxes_stuck():
+                    continue
+                
                 new_moves = state.moves + [direction]
                 new_g_cost = state.g_cost + 1
                 new_state = self.create_state(test_map, new_moves, new_g_cost)
@@ -297,6 +302,7 @@ class AStarSearch:
             if self.is_time_exceeded():
                 elapsed_time = time.time() - self.start_time
                 log.warning(f"⏰ Time limit of {self.time_limit}s exceeded after {iterations} iterations")
+                self.iterations_used = iterations  # Store iterations before breaking
                 break
                 
             current_state = heapq.heappop(priority_queue)
@@ -315,6 +321,7 @@ class AStarSearch:
                 log.info(f"🎯 Final cost: {current_state.f_cost}")
                 log.info(f"⏰ Time taken: {elapsed_time:.2f}s")
                 self.solution_found = True
+                self.iterations_used = iterations  # Store iterations on success
                 return current_state.moves
             
             # Explore all possible moves
@@ -338,6 +345,7 @@ class AStarSearch:
         
         elapsed_time = time.time() - self.start_time if self.start_time else 0
         log.warning(f"❌ No solution found after {iterations} iterations in {elapsed_time:.2f}s")
+        self.iterations_used = iterations  # Store iterations on failure
         return None
     
     def get_statistics(self) -> dict:
@@ -349,7 +357,7 @@ class AStarSearch:
         }
 
 
-def solve_with_astar(game_map: GameMap, max_iterations: int = 75000, time_limit: float = 60.0) -> Optional[List[str]]:
+def solve_with_astar(game_map: GameMap, max_iterations: int = 75000, time_limit: float = 60.0):
     """
     Optimized convenience function to solve Sokoban puzzle with A*.
     
@@ -359,10 +367,16 @@ def solve_with_astar(game_map: GameMap, max_iterations: int = 75000, time_limit:
         time_limit: Maximum time in seconds before giving up
         
     Returns:
-        List of moves to solve the puzzle, or None if no solution found
+        Dictionary with 'moves' (list of moves or None) and 'iterations' (count)
     """
     solver = AStarSearch(game_map, max_iterations, time_limit)
-    return solver.solve()
+    moves = solver.solve()
+    
+    # Return dictionary with moves and iteration count
+    return {
+        'moves': moves,
+        'iterations': solver.iterations_used
+    }
 
 
 if __name__ == "__main__":

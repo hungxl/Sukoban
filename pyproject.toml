@@ -7,8 +7,12 @@ authors = [{name = "Hung Lex", email = "lexuanhung25062001@google.com"},
 requires-python = ">= 3.11"
 dependencies = [
     "loguru>=0.7.3",
+    "matplotlib>=3.10.7",
     "numpy>=2.3.4",
+    "pandas>=2.3.3",
+    "prettytable>=3.16.0",
     "rich>=14.2.0",
     "ruff>=0.14.0",
+    "seaborn>=0.13.2",
     "textual>=6.3.0",
 ]

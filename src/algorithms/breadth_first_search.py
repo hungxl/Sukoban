@@ -45,6 +45,7 @@ class BreadthFirstSearch:
         self.visited_states: Set[GameStateKey] = set()
         self.solution_found = False
         self.start_time = None
+        self.iterations_used = 0  # Track actual iterations used
         
     def is_time_exceeded(self) -> bool:
         """Check if time limit has been exceeded"""
@@ -63,6 +64,10 @@ class BreadthFirstSearch:
             
             # Use move_player_bot for deadlock detection in algorithms
             if test_map.move_player_bot(direction):
+                # Check for global deadlock: all boxes stuck
+                if test_map._is_all_boxes_stuck():
+                    continue
+                
                 # Check if this move involves dock reassignment and evaluate if it's beneficial
                 if self._is_beneficial_move(game_map, test_map, direction):
                     state_key = GameStateKey.from_game_map(test_map)
@@ -265,6 +270,7 @@ class BreadthFirstSearch:
         while queue and iterations < self.max_iterations:
             if self.is_time_exceeded():
                 log.warning(f"⏰ Time limit of {self.time_limit}s exceeded after {iterations} iterations")
+                self.iterations_used = iterations  # Store iterations before breaking
                 break
                 
             current_map, current_moves = queue.popleft()
@@ -277,6 +283,7 @@ class BreadthFirstSearch:
                 log.info(f"📏 Solution length: {len(current_moves)} moves")
                 log.info(f"⏰ Time taken: {elapsed_time:.2f}s")
                 self.solution_found = True
+                self.iterations_used = iterations  # Store iterations on success
                 return current_moves
             
             # Explore all possible moves
@@ -309,7 +316,7 @@ class BreadthFirstSearch:
         }
 
 
-def solve_with_bfs(game_map: GameMap, max_iterations: int = 50000, time_limit: float = 60.0) -> Optional[List[str]]:
+def solve_with_bfs(game_map: GameMap, max_iterations: int = 50000, time_limit: float = 60.0):
     """
     Optimized convenience function to solve Sokoban puzzle with BFS.
     
@@ -319,10 +326,16 @@ def solve_with_bfs(game_map: GameMap, max_iterations: int = 50000, time_limit: f
         time_limit: Maximum time in seconds before giving up
         
     Returns:
-        List of moves to solve the puzzle, or None if no solution found
+        Dictionary with 'moves' (list of moves or None) and 'iterations' (count)
     """
     solver = BreadthFirstSearch(game_map, max_iterations, time_limit)
-    return solver.solve()
+    moves = solver.solve()
+    
+    # Return dictionary with moves and iteration count
+    return {
+        'moves': moves,
+        'iterations': solver.iterations_used
+    }
 
 
 if __name__ == "__main__":

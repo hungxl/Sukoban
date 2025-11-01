@@ -7,14 +7,26 @@ from src.base import Position
 from src.log import get_logger
 from random import randint
 from pathlib import Path
-from src.algorithms import SokobanBot
+from src.algorithms import SokobanBot, TIME_LIMIT_DEFAULT
 from src.levels.level import get_level_count, get_level_info, get_level, list_available_levels
 import time
+import asyncio
 
-LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
+
+# Clean up old log files (ignore if files are locked by another process)
 for file in LOG_DIR.glob("*.log"):
-    file.unlink()
+    try:
+        file.unlink()
+    except (PermissionError, OSError):
+        pass  # File is in use by another process, skip it
+        
+for file in LOG_DIR.glob("*.zip"):
+    try:
+        file.unlink()
+    except (PermissionError, OSError):
+        pass  # File is in use by another process, skip it
     
 # Get logger for this module
 log = get_logger(__name__)
@@ -54,8 +66,8 @@ class GameMapWidget(Static):
             log.warning(f"Player could not move {direction}")
         return success
     
-    def auto_solve(self, algorithm: str = "auto") -> bool:
-        """Use bot to automatically solve the puzzle"""
+    def auto_solve(self, algorithm: str = "auto"):
+        """Use bot to automatically solve the puzzle - returns result dict"""
         try:
             log.info(f"🤖 Starting auto-solve with {algorithm} algorithm")
             
@@ -65,17 +77,11 @@ class GameMapWidget(Static):
             else:
                 result = self.bot.solve(self.game_map, algorithm)
             
-            if result and result.get('success'):
-                moves = result.get('moves', [])
-                log.success(f"🎯 Bot found solution with {len(moves)} moves: {' '.join(moves)}")
-                return self.execute_solution(moves)
-            else:
-                log.warning("❌ Bot could not find a solution")
-                return False
+            return result
                 
         except Exception as e:
             log.error(f"❌ Auto-solve failed: {e}")
-            return False
+            return {'success': False, 'error': str(e)}
     
     def execute_solution(self, moves: list[str]) -> bool:
         """Execute a series of moves"""
@@ -84,10 +90,28 @@ class GameMapWidget(Static):
                 if not self.move_player(move):
                     log.warning(f"Failed to execute move: {move}")
                     return False
-                time.sleep(0.1)  # Small delay to see the moves
+                time.sleep(0.1)  # Small delay for visibility
             return True
         except Exception as e:
             log.error(f"Failed to execute solution: {e}")
+            return False
+    
+    async def execute_solution_animated(self, moves: list[str], app_callback) -> bool:
+        """Execute a series of moves with animation"""
+        try:
+            for i, move in enumerate(moves):
+                if not self.move_player(move):
+                    log.warning(f"Failed to execute move: {move}")
+                    return False
+                
+                # Update UI through callback
+                await app_callback(i + 1, len(moves))
+                
+                # Delay for animation
+                await asyncio.sleep(0.3)
+            return True
+        except Exception as e:
+            log.error(f"Failed to execute animated solution: {e}")
             return False
     
     def reset_level(self):
@@ -135,6 +159,135 @@ class ScoreBar(Static):
             status_text += f"  [bold green]Solved in {self.last_solve_time:.2f}s[/bold green]"
             
         return Text.from_markup(status_text)
+
+
+class SolutionDisplay(Static):
+    """Display solution details after bot solving"""    
+    def __init__(self):
+        super().__init__()
+        self.visible = False
+        self.solution_data = None
+        
+    def show_solution(self, result: dict):
+        self.solution_data = result
+        self.visible = True
+        
+    def hide(self):
+        self.visible = False
+        self.solution_data = None
+        
+    def render(self) -> Text:
+        if not self.visible or not self.solution_data:
+            return Text("")
+        
+        data = self.solution_data
+        algo = data.get('algorithm', 'Unknown')
+        moves = data.get('move_count', 0)
+        time_taken = data.get('solve_time', 0.0)
+        iterations = data.get('iterations_used', 0)
+        optimal = data.get('optimal', False)
+        
+        content = "\n[bold white on green]           🎯 SOLUTION FOUND!            [/bold white on green]\n"
+        content += "[bold white on green]                                         [/bold white on green]\n"
+        content += f"[bold white on green]  Algorithm: {algo:27}[/bold white on green]\n"
+        content += f"[bold white on green]  Moves: {moves:32}[/bold white on green]\n"
+        content += f"[bold white on green]  Iterations: {iterations:28}[/bold white on green]\n"
+        content += f"[bold white on green]  Time: {time_taken:.2f}s{' ' * (31 - len(f'{time_taken:.2f}s'))}[/bold white on green]\n"
+        
+        if optimal:
+            content += "[bold white on green]  ⭐ Optimal Solution              [/bold white on green]\n"
+        
+        content += "[bold white on green]                                         [/bold white on green]\n"
+        content += "[bold white on green]  ▶ Press SPACE to Auto-Play Solution   [/bold white on green]\n"
+        content += "[bold white on green]  ⏭  Press ENTER to Skip                [/bold white on green]\n"
+        content += "[bold white on green]                                         [/bold white on green]\n"
+        
+        return Text.from_markup(content)
+
+
+class CountdownTimer(Static):
+    """Display countdown timer during bot solving"""
+    
+    def __init__(self):
+        super().__init__()
+        self.visible = False
+        self.time_limit = TIME_LIMIT_DEFAULT
+        self.elapsed_time = 0.0
+        self.start_time = None
+        self.algorithm_name = "Bot"
+        
+    def start(self, time_limit: float, algorithm_name: str = "Bot"):
+        """Start the countdown timer"""
+        self.time_limit = time_limit
+        self.elapsed_time = 0.0
+        self.start_time = time.time()
+        self.algorithm_name = algorithm_name
+        self.visible = True
+        
+    def stop(self):
+        """Stop the countdown timer"""
+        self.visible = False
+        self.start_time = None
+        
+    def update_time(self):
+        """Update elapsed time"""
+        if self.start_time:
+            self.elapsed_time = time.time() - self.start_time
+            
+    def get_progress_bar(self, width: int = 40) -> str:
+        """Generate a progress bar showing time remaining"""
+        if self.time_limit <= 0:
+            return ""
+            
+        remaining = max(0, self.time_limit - self.elapsed_time)
+        progress = min(1.0, self.elapsed_time / self.time_limit)
+        
+        filled = int(progress * width)
+        empty = width - filled
+        
+        bar = "█" * filled + "░" * empty
+        
+        # Color based on time remaining
+        if remaining < self.time_limit / 6:
+            color = "red"
+        elif remaining < self.time_limit / 2:
+            color = "yellow"
+        else:
+            color = "green"
+            
+        return f"[{color}]{bar}[/{color}]"
+        
+    def render(self) -> Text:
+        if not self.visible:
+            return Text("")
+        
+        self.update_time()
+        
+        remaining = max(0, self.time_limit - self.elapsed_time)
+        minutes = int(remaining // 60)
+        seconds = int(remaining % 60)
+        
+        progress_bar = self.get_progress_bar(40)
+        time_str = f"{minutes:02d}:{seconds:02d}"
+        
+        # Color the time based on urgency
+        if remaining < 10:
+            time_color = "bold red"
+        elif remaining < 30:
+            time_color = "bold yellow"
+        else:
+            time_color = "bold green"
+        
+        content = "\n[bold white on blue]        🤖 BOT SOLVING IN PROGRESS 🤖        [/bold white on blue]\n"
+        content += "[bold white on blue]                                             [/bold white on blue]\n"
+        content += f"[bold white on blue]  Algorithm: {self.algorithm_name:30}[/bold white on blue]\n"
+        content += f"[bold white on blue]  Time Remaining: [{time_color}]{time_str}[/{time_color}]{' ' * (24 - len(time_str))}[/bold white on blue]\n"
+        content += f"[bold white on blue]  {progress_bar}  [/bold white on blue]\n"
+        content += "[bold white on blue]                                             [/bold white on blue]\n"
+        content += "[bold white on blue]     Please wait while the bot finds a solution...  [/bold white on blue]\n"
+        content += "[bold white on blue]                                             [/bold white on blue]\n"
+        
+        return Text.from_markup(content)
 
 
 class HelpMenu(Static):
@@ -472,6 +625,20 @@ class SukobanApp(App):
         text-align: center;
         layer: overlay;
     }
+    
+    .solution-display {
+        dock: top;
+        height: 12;
+        text-align: center;
+        layer: overlay;
+    }
+    
+    .countdown-timer {
+        dock: top;
+        height: 10;
+        text-align: center;
+        layer: overlay;
+    }
     """
     
     BINDINGS = [
@@ -501,10 +668,15 @@ class SukobanApp(App):
         self.help_menu = HelpMenu()
         self.bot_menu = BotMenu()
         self.level_menu = LevelMenu()
+        self.solution_display = SolutionDisplay()
+        self.countdown_timer = CountdownTimer()
         self.paused = False
         self.help_shown = False
         self.bot_menu_shown = False
         self.level_menu_shown = False
+        self.solution_shown = False
+        self.current_solution = None
+        self.is_autoplaying = False
         log.success("✅ Sokoban application initialized successfully!")
         
     def load_level(self, level_number: int = 1) -> list[str]:
@@ -551,6 +723,8 @@ class SukobanApp(App):
             self.help_menu,
             self.bot_menu,
             self.level_menu,
+            self.solution_display,
+            self.countdown_timer,
             self.pause_menu,
             self.score_bar,
             self.game_map_widget,
@@ -600,7 +774,12 @@ class SukobanApp(App):
     
     def action_select(self):
         """Handle Enter key to select menu items"""
-        if self.paused:
+        if self.solution_shown:
+            # Enter skips solution display
+            self.solution_shown = False
+            self.solution_display.hide()
+            self.refresh_widgets()
+        elif self.paused:
             action = self.pause_menu.get_selected_action()
             self._execute_menu_action(action)
         elif self.bot_menu_shown:
@@ -628,14 +807,17 @@ class SukobanApp(App):
             self.exit()
         elif action == "auto":
             self.action_auto_solve()
-        elif action in ["bfs", "astar", "sa"]:
+        elif action in ["bfs", "astar"]:
             self.action_solve_algorithm(action)
         else:
             # Try to handle it as an algorithm action
             self.action_solve_algorithm(action)
     
     def action_pause(self):
-        if self.help_shown:
+        if self.solution_shown:
+            # Space triggers autoplay when solution is shown
+            self.run_worker(self.autoplay_solution())
+        elif self.help_shown:
             self.help_shown = False
             self.help_menu.toggle()
         elif self.bot_menu_shown:
@@ -783,28 +965,97 @@ class SukobanApp(App):
                 log.success(f"🎉 Level completed in {moves} moves and {pushes} pushes!")
                 self.notify("🎉 Level Complete! Congratulations!", severity="information")
     
+    async def autoplay_solution(self):
+        """Automatically play the found solution with animation"""
+        if not self.current_solution or not self.current_solution.get('moves'):
+            return
+        
+        self.is_autoplaying = True
+        self.solution_shown = False
+        self.solution_display.hide()
+        
+        moves = self.current_solution['moves']
+        total_moves = len(moves)
+        
+        try:
+            for i, move in enumerate(moves):
+                if not self.is_autoplaying:  # Allow cancellation
+                    break
+                
+                # Update status
+                self.score_bar.set_bot_status(f"⏵ Autoplay: {i+1}/{total_moves}")
+                self.refresh_widgets()
+                
+                # Execute move
+                if not self.game_map_widget.move_player(move):
+                    log.warning(f"Failed to execute move: {move}")
+                    break
+                
+                # Delay for animation
+                await asyncio.sleep(0.3)
+            
+            # Clear status
+            self.score_bar.set_bot_status("")
+            self.is_autoplaying = False
+            self.refresh_widgets()
+            
+        except Exception as e:
+            log.error(f"Autoplay error: {e}")
+            self.is_autoplaying = False
+            self.score_bar.set_bot_status("❌ Autoplay error")
+            self.refresh_widgets()
+    
     def action_auto_solve(self):
         """Auto solve using the best algorithm for the puzzle"""
         self._close_all_menus()
-        
+        self.run_worker(self._async_auto_solve(), exclusive=True)
+    
+    async def _async_auto_solve(self):
+        """Async auto solve with countdown timer"""
         try:
             log.info("🤖 Starting auto-solve...")
             self.score_bar.set_bot_status("🤖 Auto-solving...")
+            
+            # Get time limit from bot configuration
+            bot_info = self.game_map_widget.bot.get_algorithm_info()
+            # Auto-solve will try multiple algorithms, use longest time limit
+            time_limit = max(algo['time_limit'] for algo in bot_info.values())
+            
+            # Start countdown timer with actual time limit
+            self.countdown_timer.start(time_limit, "Auto-Solver")
             self.refresh_widgets()
             
-            start_time = time.time()
-            success = self.game_map_widget.auto_solve("auto")
-            solve_time = time.time() - start_time
+            # Run solver in executor to not block UI
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                # Start solver
+                future = executor.submit(self.game_map_widget.auto_solve, "auto")
+                
+                # Update timer while solving
+                while not future.done():
+                    await asyncio.sleep(0.1)
+                    self.countdown_timer.update_time()
+                    self.refresh_widgets()
+                
+                result = future.result()
             
-            if success:
-                self.score_bar.set_bot_status("✅ Auto-solved!", solve_time)
-                self.notify("🎯 Puzzle solved by bot!", severity="information")
+            # Stop countdown timer
+            self.countdown_timer.stop()
+            
+            if result and result.get('success'):
+                # Store solution and show display
+                self.current_solution = result
+                self.solution_shown = True
+                self.solution_display.show_solution(result)
+                self.score_bar.set_bot_status("✅ Solution found!", result.get('solve_time'))
+                self.notify("🎯 Solution found! Press SPACE to autoplay or ENTER to skip", severity="information")
             else:
                 self.score_bar.set_bot_status("❌ Auto-solve failed")
                 self.notify("❌ Bot couldn't solve this puzzle", severity="error")
                 
         except Exception as e:
             log.error(f"Auto-solve error: {e}")
+            self.countdown_timer.stop()
             self.score_bar.set_bot_status("❌ Auto-solve error")
             self.notify(f"❌ Auto-solve failed: {e}", severity="error")
         finally:
@@ -813,12 +1064,14 @@ class SukobanApp(App):
     def action_solve_algorithm(self, algorithm_key):
         """Solve using the specified algorithm"""
         self._close_all_menus()
-        
+        self.run_worker(self._async_solve_algorithm(algorithm_key), exclusive=True)
+    
+    async def _async_solve_algorithm(self, algorithm_key):
+        """Async solve with specific algorithm and countdown timer"""
         # Map algorithm keys to names and icons
         algorithm_info = {
             "bfs": {"name": "BFS", "display": "Breadth-First Search", "icon": "🔍", "emoji": "🎯"},
             "astar": {"name": "A*", "display": "A* Search", "icon": "🎯", "emoji": "🎯"},
-            "sa": {"name": "SA", "display": "Simulated Annealing", "icon": "🔥", "emoji": "🎯"}
         }
         
         if algorithm_key not in algorithm_info:
@@ -831,21 +1084,46 @@ class SukobanApp(App):
         try:
             log.info(f"🤖 Starting {info['display']} solver...")
             self.score_bar.set_bot_status(f"{info['icon']} {info['name']} solving...")
+            
+            # Get time limit from bot configuration for this specific algorithm
+            bot_algo_info = self.game_map_widget.bot.get_algorithm_info(algorithm_key)
+            time_limit = bot_algo_info.get('time_limit', 60.0)
+            
+            # Start countdown timer with algorithm's actual time limit
+            self.countdown_timer.start(time_limit, info['display'])
             self.refresh_widgets()
             
-            start_time = time.time()
-            success = self.game_map_widget.auto_solve(algorithm_key)
-            solve_time = time.time() - start_time
+            # Run solver in executor to not block UI
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                # Start solver
+                future = executor.submit(self.game_map_widget.auto_solve, algorithm_key)
+                
+                # Update timer while solving
+                while not future.done():
+                    await asyncio.sleep(0.1)
+                    self.countdown_timer.update_time()
+                    self.refresh_widgets()
+                
+                result = future.result()
             
-            if success:
-                self.score_bar.set_bot_status(f"✅ {info['name']} solved!", solve_time)
-                self.notify(f"{info['emoji']} {info['display']} found solution!", severity="information")
+            # Stop countdown timer
+            self.countdown_timer.stop()
+            
+            if result and result.get('success'):
+                # Store solution and show display
+                self.current_solution = result
+                self.solution_shown = True
+                self.solution_display.show_solution(result)
+                self.score_bar.set_bot_status(f"✅ {info['name']} solved!", result.get('solve_time'))
+                self.notify(f"{info['emoji']} Solution found! Press SPACE to autoplay or ENTER to skip", severity="information")
             else:
                 self.score_bar.set_bot_status(f"❌ {info['name']} failed")
                 self.notify(f"❌ {info['display']} couldn't solve this puzzle", severity="error")
                 
         except Exception as e:
             log.error(f"{info['display']} solve error: {e}")
+            self.countdown_timer.stop()
             self.score_bar.set_bot_status(f"❌ {info['name']} error")
             self.notify(f"❌ {info['display']} solve failed: {e}", severity="error")
         finally:
@@ -865,6 +1143,9 @@ class SukobanApp(App):
         if self.level_menu_shown:
             self.level_menu_shown = False
             self.level_menu.toggle()
+        if self.solution_shown:
+            self.solution_shown = False
+            self.solution_display.hide()
     
     def on_key(self, event):
         """Handle key events for level selection"""
@@ -908,6 +1189,8 @@ class SukobanApp(App):
         self.help_menu.refresh()
         self.bot_menu.refresh()
         self.level_menu.refresh()
+        self.solution_display.refresh()
+        self.countdown_timer.refresh()
 
 
 if __name__ == "__main__":
