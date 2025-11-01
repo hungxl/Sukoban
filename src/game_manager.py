@@ -175,17 +175,16 @@ class GameMap:
             
             # Move the box
             self._move_box(box_at_target, box_new_position)
-            self.player.push_box()
+            self.player.push_box(log_action=True)  # Log for human player
         
-        # Move the player
-        self._move_player_to(new_position)
+        # Move the player (with logging for human player)
+        self._move_player_to(new_position, log_action=True)
         return True
     
-    @log_performance
     @catch_and_log(level="WARNING", message="Bot movement failed")
     def move_player_bot(self, direction: str) -> bool:
         """Move player in the given direction (bot algorithms - with deadlock detection)"""
-        log.debug(f"🤖 Bot attempting to move player {direction}")
+        # Removed excessive debug logging for bot moves to reduce log volume
         
         if not self.player:
             log.error("❌ No player found to move")
@@ -232,10 +231,10 @@ class GameMap:
             
             # Move the box
             self._move_box(box_at_target, box_new_position)
-            self.player.push_box()
+            self.player.push_box(log_action=False)  # No logging for bot
         
-        # Move the player
-        self._move_player_to(new_position)
+        # Move the player (no logging for bot to reduce log volume)
+        self._move_player_to(new_position, log_action=False)
         return True
     
     def _can_push_box(self, box: Box, new_position: Position) -> bool:
@@ -251,6 +250,80 @@ class GameMap:
         
         return True
     
+    def _is_box_in_corner(self, position: Position) -> bool:
+        """Check if position is in a corner with walls (based on reference check_in_corner)"""
+        x, y = position.x, position.y
+        
+        # Check all 4 diagonal corners
+        # Top-left corner (x-1, y-1)
+        if self.get_entity_of_type_at(Position(x - 1, y - 1), EntityType.WALL):
+            if (self.get_entity_of_type_at(Position(x - 1, y), EntityType.WALL) and 
+                self.get_entity_of_type_at(Position(x, y - 1), EntityType.WALL)):
+                return True
+        
+        # Bottom-left corner (x-1, y+1)
+        if self.get_entity_of_type_at(Position(x - 1, y + 1), EntityType.WALL):
+            if (self.get_entity_of_type_at(Position(x - 1, y), EntityType.WALL) and 
+                self.get_entity_of_type_at(Position(x, y + 1), EntityType.WALL)):
+                return True
+        
+        # Top-right corner (x+1, y-1)
+        if self.get_entity_of_type_at(Position(x + 1, y - 1), EntityType.WALL):
+            if (self.get_entity_of_type_at(Position(x + 1, y), EntityType.WALL) and 
+                self.get_entity_of_type_at(Position(x, y - 1), EntityType.WALL)):
+                return True
+        
+        # Bottom-right corner (x+1, y+1)
+        if self.get_entity_of_type_at(Position(x + 1, y + 1), EntityType.WALL):
+            if (self.get_entity_of_type_at(Position(x + 1, y), EntityType.WALL) and 
+                self.get_entity_of_type_at(Position(x, y + 1), EntityType.WALL)):
+                return True
+        
+        return False
+    
+    def _is_box_can_be_moved(self, position: Position) -> bool:
+        """Check if a box at position can be moved in at least one direction (based on reference is_box_can_be_moved)"""
+        x, y = position.x, position.y
+        
+        # Helper to check if position is walkable or has player
+        def is_walkable(pos: Position) -> bool:
+            if not self.is_position_valid(pos):
+                return False
+            entities = self.get_entities_at(pos)
+            for entity in entities:
+                if entity.entity_type == EntityType.WALL or entity.entity_type == EntityType.BOX:
+                    return False
+            return True
+        
+        # Check left-right movement
+        left = Position(x - 1, y)
+        right = Position(x + 1, y)
+        if (is_walkable(left) or self.player and self.player.position == left) and is_walkable(right):
+            return True
+        if (is_walkable(right) or self.player and self.player.position == right) and is_walkable(left):
+            return True
+        
+        # Check up-down movement
+        up = Position(x, y - 1)
+        down = Position(x, y + 1)
+        if (is_walkable(up) or self.player and self.player.position == up) and is_walkable(down):
+            return True
+        if (is_walkable(down) or self.player and self.player.position == down) and is_walkable(up):
+            return True
+        
+        return False
+    
+    def _is_all_boxes_stuck(self) -> bool:
+        """Check if all boxes are stuck (based on reference is_all_boxes_stuck)"""
+        for box in self.boxes:
+            # If box is on dock, not all stuck
+            if box.on_dock:
+                return False
+            # If box can be moved, not all stuck
+            if self._is_box_can_be_moved(box.position):
+                return False
+        return True
+    
     def _can_push_box_with_deadlock_detection(self, box: Box, new_position: Position) -> bool:
         """Check if box can be pushed to the new position with deadlock detection (for bot algorithms)"""
         if not self.is_position_valid(new_position):
@@ -262,50 +335,12 @@ class GameMap:
             if entity.is_solid():
                 return False
         
-        # CRITICAL: Add deadlock detection for bot algorithms only
-        # Check if box would be stuck in corner (deadlock prevention)
+        # CRITICAL: Enhanced deadlock detection based on reference implementation
         dock_at_new_pos = self.get_entity_of_type_at(new_position, EntityType.DOCK)
         if not dock_at_new_pos:  # Only check deadlock if not on goal
-            wall_count_horizontal = 0
-            wall_count_vertical = 0
-            
-            # Check horizontal neighbors (left and right)
-            left_pos = Position(new_position.x - 1, new_position.y)
-            right_pos = Position(new_position.x + 1, new_position.y)
-            box_count_horizontal = 0
-            if self.get_entity_of_type_at(left_pos, EntityType.WALL):
-                wall_count_horizontal += 1
-            elif self.get_entity_of_type_at(left_pos, EntityType.BOX):
-                box_count_horizontal += 1
-            if self.get_entity_of_type_at(right_pos, EntityType.WALL):
-                wall_count_horizontal += 1
-            elif self.get_entity_of_type_at(right_pos, EntityType.BOX):
-                box_count_horizontal += 1
-                
-            # Check vertical neighbors (up and down)
-            up_pos = Position(new_position.x, new_position.y - 1)
-            down_pos = Position(new_position.x, new_position.y + 1)
-            box_count_vertical = 0
-            if self.get_entity_of_type_at(up_pos, EntityType.WALL):
-                wall_count_vertical += 1
-            elif self.get_entity_of_type_at(up_pos, EntityType.BOX):
-                box_count_vertical += 1
-            if self.get_entity_of_type_at(down_pos, EntityType.WALL):
-                wall_count_vertical += 1
-            elif self.get_entity_of_type_at(down_pos, EntityType.BOX):
-                box_count_vertical += 1
-            
-            # Enhanced deadlock detection (based on your algorithm):
-            # 1. Corner deadlock: walls on two perpendicular sides
-            if wall_count_horizontal >= 1 and wall_count_vertical >= 1:
+            # Check if box would be stuck in corner
+            if self._is_box_in_corner(new_position):
                 log.debug(f"🚫 Corner deadlock detected: box at {new_position}")
-                return False
-            
-            # 2. Box-wall mixed deadlock: obstacles on perpendicular sides
-            total_horizontal = wall_count_horizontal + box_count_horizontal
-            total_vertical = wall_count_vertical + box_count_vertical
-            if total_horizontal >= 1 and total_vertical >= 1:
-                log.debug(f"🚫 Mixed deadlock detected: box at {new_position}")
                 return False
         
         return True
@@ -333,7 +368,7 @@ class GameMap:
             new_dock.place_box()
             box.set_on_dock(True)
     
-    def _move_player_to(self, new_position: Position):
+    def _move_player_to(self, new_position: Position, log_action: bool = True):
         """Move player to new position and update dock states"""
         if not self.player:
             return
@@ -349,8 +384,8 @@ class GameMap:
             old_dock.remove_player()
             self.player.set_on_dock(False)
         
-        # Move player
-        self.player.move(new_position)
+        # Move player (with logging control)
+        self.player.move(new_position, log_action=log_action)
         self._add_entity(self.player)
         
         # Update dock state at new position

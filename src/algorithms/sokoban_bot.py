@@ -8,13 +8,12 @@ import time
 from ..game_manager import GameMap
 from .breadth_first_search import solve_with_bfs
 from .astar_search import solve_with_astar
-from .simulated_annealing import solve_with_simulated_annealing
 from ..log.logger import get_logger
 
 # Get logger for this module
 log = get_logger(__name__)
 
-TIME_LIMIT_DEFAULT = 60.0  # seconds
+TIME_LIMIT_DEFAULT = 600.0  # seconds - reasonable default for UI responsiveness
 
 class SokobanBot:
     """
@@ -28,7 +27,7 @@ class SokobanBot:
                 'solver': solve_with_bfs,
                 'description': 'Guarantees shortest solution but may be slow for complex puzzles',
                 'optimal': True,
-                'max_iterations': 4000,  # Increased from 50K for better coverage
+                'max_iterations': 50000,  # Increased for multi-box puzzles
                 'time_limit': TIME_LIMIT_DEFAULT
             },
             'astar': {
@@ -36,15 +35,7 @@ class SokobanBot:
                 'solver': solve_with_astar,
                 'description': 'Fast and often finds good solutions using heuristics',
                 'optimal': False,
-                'max_iterations': 3000,  # Increased from 75K for complex puzzles
-                'time_limit': TIME_LIMIT_DEFAULT
-            },
-            'sa': {
-                'name': 'Simulated Annealing',
-                'solver': solve_with_simulated_annealing,
-                'description': 'Probabilistic search that can escape local optima',
-                'optimal': False,
-                'max_iterations': 6000,  # High iterations for probabilistic search
+                'max_iterations': 100000,  # Significantly increased for complex multi-box puzzles
                 'time_limit': TIME_LIMIT_DEFAULT
             },
         }
@@ -78,23 +69,34 @@ class SokobanBot:
         
         try:
             # Call solver with both iterations and time limit
-            solution = algo_info['solver'](game_map, iterations, time_limit_val)
+            solver_result = algo_info['solver'](game_map, iterations, time_limit_val)
             solve_time = time.time() - start_time
             
+            # Handle both dict and list returns for backwards compatibility
+            if isinstance(solver_result, dict):
+                solution = solver_result.get('moves')
+                iterations_used = solver_result.get('iterations', iterations)
+            else:
+                solution = solver_result
+                iterations_used = iterations
+            
             result = {
-                'success': solution is not None,
+                'success': solution is not None and len(solution) > 0 if solution else False,
                 'algorithm': algo_info['name'],
+                'algorithm_key': algorithm,
                 'moves': solution,
                 'move_count': len(solution) if solution else 0,
                 'solve_time': solve_time,
                 'optimal': algo_info['optimal'],
-                'iterations_used': iterations,
+                'iterations_used': iterations_used,
+                'max_iterations': iterations,
                 'time_limit': time_limit_val
             }
             
             if solution:
                 log.success("✅ Puzzle solved successfully!")
                 log.info(f"📏 Solution: {len(solution)} moves")
+                log.info(f"🔄 Iterations: {iterations_used}")
                 log.info(f"⏱️  Time taken: {solve_time:.2f} seconds")
                 log.info(f"🎯 Moves: {' '.join(solution)}")
             else:

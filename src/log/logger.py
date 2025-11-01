@@ -11,7 +11,7 @@ import functools
 from typing import Callable, Any
 
 # Setup log directory
-LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+LOG_DIR = Path(__file__).parent.parent.parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
 # Remove default handler
@@ -46,13 +46,14 @@ logger.add(
         "{message} | "
         "Extra: {extra}"
     ),
-    rotation="10 MB",
+    rotation="50 MB",  # Increased size to reduce rotation frequency
     retention="7 days",
     compression="zip",
-    enqueue=False,  # Keep False to prevent Windows file locking issues
+    enqueue=True,  # Changed to True - uses background thread to avoid Windows locking
     backtrace=True,
     diagnose=True,
-    serialize=False
+    serialize=False,
+    catch=True  # Suppress rotation errors to prevent spam
 )
 
 # Game events log (INFO and above)
@@ -65,11 +66,12 @@ logger.add(
         "{name} | "
         "{message}"
     ),
-    rotation="5 MB",
+    rotation="50 MB",  # Increased size to reduce rotation frequency
     retention="30 days",
     compression="zip",
-    enqueue=False,  # Keep False to prevent Windows file locking issues
-    filter=lambda record: record["level"].name in ["INFO", "WARNING", "ERROR", "CRITICAL"]
+    enqueue=True,  # Changed to True - uses background thread to avoid Windows locking
+    filter=lambda record: record["level"].name in ["INFO", "WARNING", "ERROR", "CRITICAL"],
+    catch=True  # Suppress rotation errors to prevent spam
 )
 
 # Error-only log for critical issues
@@ -83,12 +85,13 @@ logger.add(
         "{message} | "
         "Exception: {exception}"
     ),
-    rotation="1 MB",
+    rotation="10 MB",  # Increased size to reduce rotation frequency
     retention="90 days",
     compression="zip",
-    enqueue=False,  # Keep False to prevent Windows file locking issues
+    enqueue=True,  # Changed to True - uses background thread to avoid Windows locking
     backtrace=True,
-    diagnose=True
+    diagnose=True,
+    catch=True  # Suppress rotation errors to prevent spam
 )
 
 
@@ -173,7 +176,7 @@ def log_performance(func: Callable) -> Callable:
             end_time = time.perf_counter()
             execution_time = (end_time - start_time) * 1000  # Convert to milliseconds
             
-            func_logger.info(
+            func_logger.debug(
                 f"⏱️  {func.__name__} executed in {execution_time:.2f}ms"
             )
             return result
